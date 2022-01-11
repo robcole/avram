@@ -101,10 +101,20 @@ module Avram::Upsert
       end
     {% end %}
 
-    def self.bulk_upsert(params : Array(Avram::BulkUpsert::Params))
-      Avram::BulkUpsert
-        .new(T.table_name, params, T.column_names)
-        .statement
+    def self.bulk_upsert(upserts : Array(Avram::BulkUpsert::Params))
+      upsert_keys = upserts.map(&.keys).uniq
+
+      if upsert_keys.size > 1
+        raise "All hashes passed to bulk_upsert must have the same keys."
+      elsif upsert_keys.flatten.any? { |key| !T.column_names.includes?(key) }
+        raise "All keys in hashes must be column names in the table."
+      end
+
+      upsert = Avram::BulkUpsert(T).new(upserts)
+      pp upsert.statement
+      pp upsert.args
+
+      T.database.query(upsert.statement, args: upsert.args)
     end
   end
 end

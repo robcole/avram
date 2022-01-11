@@ -1,20 +1,47 @@
-class Avram::BulkUpsert
+class Avram::BulkUpsert(T)
   alias Params = Hash(Symbol, String) | Hash(Symbol, String?) | Hash(Symbol, Nil)
 
-  def initialize(@table : TableName,
-                 @records : Array(Params),
-                 @column_names : Array(Symbol) = [] of Symbol)
+  def initialize(@records : Array(Params))
   end
 
   def statement
-    "insert into #{@table}(#{fields}) values(#{values}) returning *"
+    [
+      "insert into #{table}(#{fields})",
+      "values #{value_placeholders}",
+      "ON CONFLICT DO UPDATE SET #{updates}",
+      "returning #{returning}",
+    ].join(" ")
+  end
+
+  private def table
+    T.table_name
+  end
+
+  private def updates
+    conflict_updates = T.column_names.uniq.map do |column|
+      "SET #{column}=EXCLUDED.#{column}"
+    end
+
+    if T.column_names.includes?(:updated_at)
+      conflict_updates.push("SET updated_at=NOW()").join(", ")
+    else
+      conflict_updates.join(", ")
+    end
+  end
+
+  private def returning
+    "id"
   end
 
   private def fields
-    @column_names.join(", ")
+    T.column_names.join(", ")
   end
 
-  private def record_values(record)
+  def args
+    @records.map &.values
+  end
+
+  private def placeholder_values(record)
     values = record.values.map_with_index(1) do |_value, index|
       "$#{index}"
     end.join(", ")
@@ -22,9 +49,9 @@ class Avram::BulkUpsert
     "(#{values})"
   end
 
-  private def values
+  private def value_placeholders
     @records.map do |record|
-      record_values(record)
+      placeholder_values(record)
     end.join(", ")
   end
 end
