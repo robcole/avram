@@ -81,6 +81,27 @@ module Avram::Upsert
       yield operation, operation.record
     end
 
+    def self.bulk_upsert(upserts)
+      operations = upserts.map do |upsert_args|
+        new(**upsert_args)
+      end
+
+      upsert = Avram::BulkUpsert(self).new(
+        operations,
+        {{ attribute_names }}.to_a
+      )
+
+      pp upsert.statement
+      pp upsert.args
+      records = [] of T
+
+      new.database.query upsert.statement, args: upsert.args do |rs|
+        records << T.from_rs(rs).first
+      end
+
+      pp records
+    end
+
     def self.find_existing_unique_record(operation) : T?
       T::BaseQuery.new
         {% for attribute in attribute_names %}
@@ -92,7 +113,7 @@ module Avram::Upsert
 
   # :nodoc:
   macro included
-    {% for method in ["upsert", "upsert!"] %}
+    {% for method in ["upsert", "upsert!", "bulk_upsert"] %}
       # Performs a create or update depending on if there is a conflicting row in the database.
       #
       # See `Avram::Upsert.upsert_lookup_columns` for full documentation and examples.
@@ -100,21 +121,5 @@ module Avram::Upsert
         \{% raise "Please use the 'upsert_lookup_columns' macro in #{@type} before using '{{ method.id }}'" %}
       end
     {% end %}
-
-    def self.bulk_upsert(upserts : Array(Avram::BulkUpsert::Params))
-      upsert_keys = upserts.map(&.keys).uniq
-
-      if upsert_keys.size > 1
-        raise "All hashes passed to bulk_upsert must have the same keys."
-      elsif upsert_keys.flatten.any? { |key| !T.column_names.includes?(key) }
-        raise "All keys in hashes must be column names in the table."
-      end
-
-      upsert = Avram::BulkUpsert(T).new(upserts)
-      pp upsert.statement
-      pp upsert.args
-
-      T.database.query(upsert.statement, args: upsert.args)
-    end
   end
 end

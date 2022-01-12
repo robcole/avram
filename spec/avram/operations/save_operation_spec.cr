@@ -312,13 +312,12 @@ describe "Avram::SaveOperation" do
       it "should create the records" do
         record_args = (1..2).to_a.map do |i|
           {
-            :name     => "Test #{i}",
-            :nickname => "Test Nickname #{i}",
-          }.as(Avram::BulkUpsert::Params)
+            name:     "Test #{i}",
+            nickname: "Test Nickname #{i}",
+          }
         end
-        records = UserFactory.new.build_pair
 
-        SaveUser.bulk_upsert(record_args)
+        UpsertUserOperation.bulk_upsert(record_args)
       end
     end
 

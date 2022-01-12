@@ -1,57 +1,64 @@
 class Avram::BulkUpsert(T)
-  alias Params = Hash(Symbol, String) | Hash(Symbol, String?) | Hash(Symbol, Nil)
-
-  def initialize(@records : Array(Params))
+  def initialize(@records : Array(T), @column_names : Array(Symbol))
+    @records = set_timestamps(records)
   end
 
   def statement
     [
-      "insert into #{table}(#{fields})",
-      "values #{value_placeholders}",
-      "ON CONFLICT DO UPDATE SET #{updates}",
-      "returning #{returning}",
+      "INSERT INTO #{table}(#{fields})",
+      "VALUES #{value_placeholders}",
+      "ON CONFLICT (#{conflicts}) DO UPDATE SET #{updates}",
+      "RETURNING #{returning}",
     ].join(" ")
   end
 
+  private def conflicts
+    pp @column_names.join(", ")
+  end
+
+  private def set_timestamps(collection)
+    collection.map do |record|
+      record.created_at.value ||= Time.utc if record.responds_to?(:created_at)
+      record.updated_at.value = Time.utc if record.responds_to?(:updated_at)
+      record
+    end
+  end
+
   private def table
-    T.table_name
+    @records.first.table_name
   end
 
   private def updates
-    conflict_updates = T.column_names.uniq.map do |column|
-      "SET #{column}=EXCLUDED.#{column}"
-    end
+    update_keys = @records.first.insert_values.keys
 
-    if T.column_names.includes?(:updated_at)
-      conflict_updates.push("SET updated_at=NOW()").join(", ")
-    else
-      conflict_updates.join(", ")
-    end
+    (update_keys - [:created_at]).map do |column|
+      "#{column}=EXCLUDED.#{column}"
+    end.join(", ")
   end
 
   private def returning
-    "id"
-  end
-
-  private def fields
     T.column_names.join(", ")
   end
 
-  def args
-    @records.map &.values
+  private def fields
+    @records.first.insert_values.keys.map do |key|
+      <<-TEXT
+      "#{key}"
+      TEXT
+    end.join(", ")
   end
 
-  private def placeholder_values(record)
-    values = record.values.map_with_index(1) do |_value, index|
-      "$#{index}"
-    end.join(", ")
-
-    "(#{values})"
+  def args
+    @records.flat_map do |record|
+      record.insert_values.values
+    end
   end
 
   private def value_placeholders
-    @records.map do |record|
-      placeholder_values(record)
+    values = @records.first.insert_values.map_with_index(1) do |_value, index|
+      "$#{index}"
     end.join(", ")
+
+    @records.map { |_| "(#{values})" }.join(", ")
   end
 end

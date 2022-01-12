@@ -367,6 +367,10 @@ abstract class Avram::SaveOperation(T)
     {{ T.constant(:PRIMARY_KEY_NAME).id }}.value.nil?
   end
 
+  def insert_values
+    attributes_to_hash(column_attributes).compact
+  end
+
   private def insert_or_update
     if persisted?
       update record_id
@@ -377,6 +381,10 @@ abstract class Avram::SaveOperation(T)
 
   private def record_id
     @record.try &.id
+  end
+
+  def self.column_names
+    T.column_names
   end
 
   def before_save; end
@@ -408,7 +416,6 @@ abstract class Avram::SaveOperation(T)
   end
 
   private def insert_sql
-    insert_values = attributes_to_hash(column_attributes).compact
     Avram::Insert.new(table_name, insert_values, T.column_names)
   end
 
